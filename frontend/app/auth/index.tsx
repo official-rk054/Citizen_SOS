@@ -1,117 +1,88 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Image,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
-export default function AuthTypeScreen() {
+export default function AuthWelcomeScreen() {
   const router = useRouter();
-  const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(30));
 
-  const userTypes = [
-    {
-      id: 'user',
-      label: 'Patient',
-      icon: '👤',
-      description: 'Book appointments and get medical assistance',
-      color: '#5B5FFF',
-    },
-    {
-      id: 'doctor',
-      label: 'Doctor',
-      icon: '👨‍⚕️',
-      description: 'Manage appointments and patient consultations',
-      color: '#4CAF50',
-    },
-    {
-      id: 'nurse',
-      label: 'Nurse',
-      icon: '👩‍⚕️',
-      description: 'Provide home care and support services',
-      color: '#FF6B6B',
-    },
-    {
-      id: 'ambulance',
-      label: 'Ambulance Driver',
-      icon: '🚑',
-      description: 'Respond to emergency calls',
-      color: '#FF9800',
-    },
-    {
-      id: 'volunteer',
-      label: 'Volunteer',
-      icon: '🙋‍♂️',
-      description: 'Help in emergency situations',
-      color: '#2196F3',
-    },
-  ];
-
-  const handleSelect = (typeId: string) => {
-    setSelectedType(typeId);
-    setTimeout(() => {
-      router.push({
-        pathname: '/auth/login',
-        params: { userType: typeId },
-      });
-    }, 300);
-  };
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.logo}>🏥</Text>
-          <Text style={styles.title}>Welcome to SmartHealth</Text>
-          <Text style={styles.subtitle}>Choose your role to continue</Text>
-        </View>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        scrollEventThrottle={16}
+      >
+        <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.header}>
+            <View style={styles.logoBadge}>
+              <Text style={styles.logo}>🏥</Text>
+            </View>
+            <Text style={styles.title}>SmartHealth</Text>
+            <Text style={styles.subtitle}>Your health companion, anytime.</Text>
+          </View>
 
-        <View style={styles.content}>
-          {userTypes.map((type) => (
-            <TouchableOpacity
-              key={type.id}
-              style={[
-                styles.card,
-                {
-                  borderColor: type.color,
-                  backgroundColor:
-                    selectedType === type.id
-                      ? `${type.color}20`
-                      : '#F8F9FF',
-                },
-              ]}
-              onPress={() => handleSelect(type.id)}
-              activeOpacity={0.7}
+          <View style={styles.heroSection}>
+            <Text style={styles.heroTitle}>Welcome to Smart Healthcare</Text>
+            <Text style={styles.heroDescription}>
+              Connect with doctors, book appointments, and get emergency support all in one place.
+            </Text>
+          </View>
+
+          <View style={styles.features}>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>🏥</Text>
+              <Text style={styles.featureText}>Connect with Healthcare Professionals</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>📅</Text>
+              <Text style={styles.featureText}>Book Appointments Easily</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>🚑</Text>
+              <Text style={styles.featureText}>Emergency Support 24/7</Text>
+            </View>
+          </View>
+
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity 
+              style={styles.primaryButton}
+              onPress={() => router.push('/auth/login')}
             >
-              <View style={styles.cardContent}>
-                <Text style={styles.icon}>{type.icon}</Text>
-                <View style={styles.textContainer}>
-                  <Text style={styles.cardLabel}>{type.label}</Text>
-                  <Text style={styles.cardDescription}>
-                    {type.description}
-                  </Text>
-                </View>
-                {selectedType === type.id && (
-                  <Text style={styles.checkmark}>✓</Text>
-                )}
-              </View>
+              <Text style={styles.primaryButtonText}>Sign In</Text>
             </TouchableOpacity>
-          ))}
-        </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            Having trouble? Contact support
-          </Text>
-          <TouchableOpacity>
-            <Text style={styles.supportLink}>Get Help</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity 
+              style={styles.secondaryButton}
+              onPress={() => router.push('/auth/register-type')}
+            >
+              <Text style={styles.secondaryButtonText}>Create Account</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -120,74 +91,123 @@ export default function AuthTypeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8F9FF',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  content: {
+    flex: 1,
   },
   header: {
-    paddingTop: 20,
-    paddingBottom: 30,
     alignItems: 'center',
+    marginBottom: 40,
+    marginTop: 20,
+  },
+  logoBadge: {
+    width: 90,
+    height: 90,
+    borderRadius: 24,
+    backgroundColor: '#5B5FFF',
+    opacity: 0.1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   logo: {
-    fontSize: 60,
-    marginBottom: 10,
+    fontSize: 48,
   },
   title: {
-    fontSize: 28,
+    fontSize: 36,
     fontWeight: '700',
     color: '#1a1a1a',
     marginBottom: 8,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#999',
+    fontSize: 15,
+    color: '#888',
+    textAlign: 'center',
   },
-  content: {
-    paddingHorizontal: 20,
-    gap: 12,
+  heroSection: {
+    marginBottom: 32,
   },
-  card: {
-    borderWidth: 2,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 8,
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 12,
+    textAlign: 'center',
   },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  heroDescription: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  features: {
+    marginBottom: 40,
     gap: 16,
   },
-  icon: {
-    fontSize: 40,
-  },
-  textContainer: {
-    flex: 1,
-  },
-  cardLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 4,
-  },
-  cardDescription: {
-    fontSize: 13,
-    color: '#666',
-  },
-  checkmark: {
-    fontSize: 24,
-    color: '#4CAF50',
-  },
-  footer: {
+  featureItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 30,
-    gap: 8,
+    backgroundColor: '#FFF',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E4FF',
+    gap: 12,
+    shadowColor: '#5B5FFF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  footerText: {
-    color: '#999',
+  featureIcon: {
+    fontSize: 28,
+  },
+  featureText: {
+    flex: 1,
     fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
   },
-  supportLink: {
+  buttonContainer: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  primaryButton: {
+    backgroundColor: '#5B5FFF',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#5B5FFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  secondaryButton: {
+    backgroundColor: '#FFF',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#5B5FFF',
+  },
+  secondaryButtonText: {
     color: '#5B5FFF',
-    fontWeight: '600',
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });

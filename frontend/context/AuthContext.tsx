@@ -24,6 +24,9 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateLocation: (latitude: number, longitude: number) => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
+  setUser: (user: User | null) => void;
+  setIsLoggedIn: (value: boolean) => void;
+  setLoading: (value: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -104,6 +107,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser((prev) => (prev ? { ...prev, ...userData } : null));
   }, []);
 
+  const setUserValue = useCallback((user: User | null) => {
+    setUser(user);
+  }, []);
+
+  const setIsLoggedInValue = useCallback((value: boolean) => {
+    setIsLoggedIn(value);
+  }, []);
+
+  const setLoadingValue = useCallback((value: boolean) => {
+    setLoading(value);
+  }, []);
+
   const value: AuthContextType = {
     user,
     loading,
@@ -113,6 +128,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     updateLocation,
     updateUser,
+    setUser: setUserValue,
+    setIsLoggedIn: setIsLoggedInValue,
+    setLoading: setLoadingValue,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
