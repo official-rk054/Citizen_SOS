@@ -10,10 +10,14 @@ import {
   FlatList,
   ActivityIndicator,
   useWindowDimensions,
+  Alert,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { usersAPI } from '../../utils/api';
+import { useAuth } from '../../context/AuthContext';
 
 export default function NearbyFacilitiesScreen() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'doctors' | 'nurses' | 'ambulances'>(
     'doctors'
   );
@@ -22,37 +26,57 @@ export default function NearbyFacilitiesScreen() {
   const [facilities, setFacilities] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [userLocation, setUserLocation] = useState<any>(null);
 
   const tabs = ['doctors', 'nurses', 'ambulances'] as const;
 
-  // Mock location - in real app, get from device
-  const mockLatitude = 37.7749;
-  const mockLongitude = -122.4194;
+  useEffect(() => {
+    initializeLocation();
+  }, []);
 
   useEffect(() => {
-    fetchNearbyFacilities();
-  }, [activeTab, radius]);
+    if (userLocation) {
+      fetchNearbyFacilities();
+    }
+  }, [activeTab, radius, userLocation]);
+
+  const initializeLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required');
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      setUserLocation(loc.coords);
+    } catch (error) {
+      console.error('Location error:', error);
+      Alert.alert('Error', 'Could not get your location');
+    }
+  };
 
   const fetchNearbyFacilities = async () => {
+    if (!userLocation) return;
+
     setLoading(true);
     try {
       let response;
-      const params = {
-        latitude: mockLatitude,
-        longitude: mockLongitude,
-        radius,
-      };
+      const { latitude, longitude } = userLocation;
 
       if (activeTab === 'doctors' || activeTab === 'nurses') {
-        response = await usersAPI.getNearbyProfessionals(activeTab, params);
+        response = await usersAPI.getNearbyProfessionals(activeTab, latitude, longitude, radius);
       } else {
-        response = await usersAPI.getNearbyAmbulances(params);
+        response = await usersAPI.getNearbyAmbulances(latitude, longitude, radius);
       }
 
       setFacilities(response.data || []);
     } catch (error) {
       console.error('Error fetching facilities:', error);
-      // Mock data for demo
+      // Use mock data as fallback
       setFacilities(getMockData());
     } finally {
       setLoading(false);

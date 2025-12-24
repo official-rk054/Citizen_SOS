@@ -11,8 +11,9 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Location from 'expo-location';
 import { useAuth } from '../../context/AuthContext';
-import { usersAPI } from '../../utils/api';
+import { usersAPI, appointmentsAPI } from '../../utils/api';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface Professional {
@@ -39,9 +40,20 @@ export default function BookAppointmentScreen() {
 
   const fetchProfessionals = async () => {
     try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required');
+        setLoading(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
       const [doctors, nurses] = await Promise.all([
-        usersAPI.getNearbyProfessionals('doctor', { latitude: 0, longitude: 0, radius: 100 }),
-        usersAPI.getNearbyProfessionals('nurse', { latitude: 0, longitude: 0, radius: 100 }),
+        usersAPI.getNearbyProfessionals('doctor', loc.coords.latitude, loc.coords.longitude, 15),
+        usersAPI.getNearbyProfessionals('nurse', loc.coords.latitude, loc.coords.longitude, 15),
       ]);
       setProfessionals([...(doctors.data || []), ...(nurses.data || [])]);
     } catch (error) {
@@ -67,7 +79,13 @@ export default function BookAppointmentScreen() {
 
     try {
       setLoading(true);
-      // Call appointment booking API
+      const appointmentData = {
+        professionalId: selectedProfessional._id,
+        appointmentDate: selectedDate.toISOString(),
+        timeSlot: selectedTime,
+        reason: reason,
+      };
+      await appointmentsAPI.bookAppointment(appointmentData);
       Alert.alert('Success', 'Appointment booked successfully');
       router.back();
     } catch (error) {

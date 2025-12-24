@@ -2,12 +2,12 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AuthProvider, useAuth } from '../context/AuthContext';
+import { useColorScheme } from '../hooks/use-color-scheme';
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
-import { storageService } from '@/utils/storage';
+import { storageService } from '../utils/storage';
 
 function RootContent() {
   const colorScheme = useColorScheme();

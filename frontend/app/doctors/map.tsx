@@ -9,17 +9,16 @@ import {
   Alert,
   ScrollView,
   Dimensions,
+  FlatList,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useAuth } from '../../context/AuthContext';
 import { usersAPI } from '../../utils/api';
 import { MaterialIcons, AntDesign } from '@expo/vector-icons';
+import GoogleMap from '../../components/GoogleMap';
 
 const { height, width } = Dimensions.get('window');
-
-// Using OpenStreetMap / Leaflet for web-like experience (no API key required)
-// For web, we'll show a list-based map view with interactive cards
 
 export default function DoctorsMapScreen() {
   const router = useRouter();
@@ -29,10 +28,9 @@ export default function DoctorsMapScreen() {
   const [nurses, setNurses] = useState<any[]>([]);
   const [ambulances, setAmbulances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showDoctors, setShowDoctors] = useState(true);
-  const [showNurses, setShowNurses] = useState(true);
-  const [showAmbulances, setShowAmbulances] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'doctors' | 'nurses' | 'ambulances'>('all');
+  const [selectedMarker, setSelectedMarker] = useState<any>(null);
+  const [showMapOnly, setShowMapOnly] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -100,29 +98,51 @@ export default function DoctorsMapScreen() {
   const getProfessionalColor = (type: 'doctor' | 'nurse' | 'ambulance') => {
     switch (type) {
       case 'doctor':
-        return '#1976D2';
+        return '#5B5FFF';
       case 'nurse':
-        return '#E91E63';
+        return '#FF6B6B';
       case 'ambulance':
-        return '#F44336';
+        return '#FF9800';
     }
   };
 
-  const ProfessionalCard = ({ professional, type }: { professional: any; type: 'doctor' | 'nurse' | 'ambulance' }) => {
-    const distance = (Math.random() * 5).toFixed(1);
+  const ProfessionalCard = ({ 
+    professional, 
+    type, 
+    isSelected,
+    onPress 
+  }: { 
+    professional: any; 
+    type: 'doctor' | 'nurse' | 'ambulance';
+    isSelected?: boolean;
+    onPress?: () => void;
+  }) => {
+    // Use distance from API response (backend calculates it)
+    const distance = professional.distance ? professional.distance.toFixed(1) : '0';
+    
+    // For rating, use actual data or fallback
+    const rating = professional.rating ? professional.rating.toFixed(1) : '4.5';
+    
     return (
-      <View style={styles.professionalCard}>
+      <TouchableOpacity
+        style={[
+          styles.professionalCard,
+          isSelected && styles.professionalCardSelected
+        ]}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
         <View style={[styles.professionalIcon, { backgroundColor: getProfessionalColor(type) }]}>
           {getProfessionalIcon(type)}
         </View>
         <View style={styles.professionalDetails}>
           <Text style={styles.professionalName}>{professional.name}</Text>
           <Text style={styles.professionalSpec}>
-            {type === 'doctor' ? professional.specialization : type === 'nurse' ? 'Registered Nurse' : 'Ambulance Service'}
+            {type === 'doctor' ? professional.specialization : type === 'nurse' ? 'Registered Nurse' : professional.ambulanceType || 'Ambulance Service'}
           </Text>
           <View style={styles.ratingRow}>
             <AntDesign name="star" size={12} color="#FFC107" />
-            <Text style={styles.rating}>4.{Math.floor(Math.random() * 9) + 1}</Text>
+            <Text style={styles.rating}>{rating}</Text>
             <Text style={styles.distance}>• {distance} km away</Text>
           </View>
         </View>
@@ -132,7 +152,7 @@ export default function DoctorsMapScreen() {
         >
           <Text style={styles.bookButtonText}>Book</Text>
         </TouchableOpacity>
-      </View>
+</TouchableOpacity>
     );
   };
 
@@ -142,23 +162,53 @@ export default function DoctorsMapScreen() {
     if (selectedFilter === 'all' || selectedFilter === 'doctors') {
       combined = [
         ...combined,
-        ...doctors.map(d => ({ ...d, type: 'doctor' })),
+        ...doctors.map((d: any) => ({ ...d, type: 'doctor' })),
       ];
     }
     if (selectedFilter === 'all' || selectedFilter === 'nurses') {
       combined = [
         ...combined,
-        ...nurses.map(n => ({ ...n, type: 'nurse' })),
+        ...nurses.map((n: any) => ({ ...n, type: 'nurse' })),
       ];
     }
     if (selectedFilter === 'all' || selectedFilter === 'ambulances') {
       combined = [
         ...combined,
-        ...ambulances.map(a => ({ ...a, type: 'ambulance' })),
+        ...ambulances.map((a: any) => ({ ...a, type: 'ambulance' })),
       ];
     }
 
     return combined;
+  };
+
+  // Convert professionals to map markers
+  const getMapMarkers = () => {
+    const markers: any[] = [];
+
+    displayProfessionals().forEach((prof) => {
+      if (prof.latitude && prof.longitude) {
+        markers.push({
+          id: prof._id || prof.id,
+          latitude: prof.latitude,
+          longitude: prof.longitude,
+          title: prof.name || prof.title,
+          description: prof.specialization || prof.type,
+          type: prof.type,
+          color: getProfessionalColor(prof.type),
+          onPress: () => handleMarkerPress(prof),
+        });
+      }
+    });
+
+    return markers;
+  };
+
+  const handleMarkerPress = (professional: any) => {
+    setSelectedMarker(professional);
+    // Auto-scroll to show the card
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd();
+    }, 300);
   };
 
   return (
@@ -169,167 +219,194 @@ export default function DoctorsMapScreen() {
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <MaterialIcons name="arrow-back" size={24} color="#1976D2" />
+          <MaterialIcons name="arrow-back" size={24} color="#5B5FFF" />
         </TouchableOpacity>
         <View style={styles.headerTitle}>
           <Text style={styles.headerTitleText}>Nearby Services</Text>
           <Text style={styles.headerSubtitle}>Find doctors, nurses & ambulances</Text>
         </View>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity
+          style={styles.mapToggleButton}
+          onPress={() => setShowMapOnly(!showMapOnly)}
+        >
+          <MaterialIcons 
+            name={showMapOnly ? "list" : "map"} 
+            size={22} 
+            color="#5B5FFF" 
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Location Info */}
       {location && (
         <View style={styles.locationInfo}>
-          <MaterialIcons name="location-on" size={16} color="#1976D2" />
+          <MaterialIcons name="location-on" size={16} color="#5B5FFF" />
           <Text style={styles.locationText}>
             Showing services within 15 km radius
           </Text>
         </View>
       )}
 
-      {/* Filter Buttons */}
-      <View style={styles.filterSection}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterScroll}
-          contentContainerStyle={styles.filterContent}
-        >
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedFilter === 'all' && styles.filterButtonActive,
-            ]}
-            onPress={() => setSelectedFilter('all')}
-          >
-            <MaterialIcons
-              name="apps"
-              size={18}
-              color={selectedFilter === 'all' ? '#fff' : '#1976D2'}
+      {showMapOnly ? (
+        // Map Only View
+        <View style={styles.mapOnlyContainer}>
+          <GoogleMap
+            initialLocation={location}
+            markers={getMapMarkers()}
+            showUserLocation={true}
+            onMarkerPress={handleMarkerPress}
+            showRadius={true}
+            radiusKm={15}
+            mapHeight={height - 150}
+          />
+        </View>
+      ) : (
+        // Map + List View
+        <>
+          {/* Google Map */}
+          {location && (
+            <GoogleMap
+              initialLocation={location}
+              markers={getMapMarkers()}
+              showUserLocation={true}
+              onMarkerPress={handleMarkerPress}
+              showRadius={true}
+              radiusKm={15}
+              mapHeight={height * 0.35}
+              style={styles.mapView}
             />
-            <Text
-              style={[
-                styles.filterButtonText,
-                selectedFilter === 'all' && styles.filterButtonTextActive,
-              ]}
-            >
-              All ({doctors.length + nurses.length + ambulances.length})
-            </Text>
-          </TouchableOpacity>
+          )}
 
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedFilter === 'doctors' && styles.filterButtonActive,
-            ]}
-            onPress={() => setSelectedFilter('doctors')}
-          >
-            <MaterialIcons
-              name="person"
-              size={18}
-              color={selectedFilter === 'doctors' ? '#fff' : '#1976D2'}
-            />
-            <Text
-              style={[
-                styles.filterButtonText,
-                selectedFilter === 'doctors' && styles.filterButtonTextActive,
-              ]}
+          {/* Filter Buttons */}
+          <View style={styles.filterSection}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.filterScroll}
+              contentContainerStyle={styles.filterContent}
             >
-              Doctors ({doctors.length})
-            </Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  selectedFilter === 'all' && styles.filterButtonActive,
+                ]}
+                onPress={() => setSelectedFilter('all')}
+              >
+                <MaterialIcons
+                  name="apps"
+                  size={18}
+                  color={selectedFilter === 'all' ? '#fff' : '#5B5FFF'}
+                />
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    selectedFilter === 'all' && styles.filterButtonTextActive,
+                  ]}
+                >
+                  All ({doctors.length + nurses.length + ambulances.length})
+                </Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedFilter === 'nurses' && styles.filterButtonActive,
-            ]}
-            onPress={() => setSelectedFilter('nurses')}
-          >
-            <MaterialIcons
-              name="favorite"
-              size={18}
-              color={selectedFilter === 'nurses' ? '#fff' : '#E91E63'}
-            />
-            <Text
-              style={[
-                styles.filterButtonText,
-                selectedFilter === 'nurses' && styles.filterButtonTextActive,
-              ]}
-            >
-              Nurses ({nurses.length})
-            </Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  selectedFilter === 'doctors' && styles.filterButtonActive,
+                ]}
+                onPress={() => setSelectedFilter('doctors')}
+              >
+                <MaterialIcons
+                  name="person"
+                  size={18}
+                  color={selectedFilter === 'doctors' ? '#fff' : '#5B5FFF'}
+                />
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    selectedFilter === 'doctors' && styles.filterButtonTextActive,
+                  ]}
+                >
+                  Doctors ({doctors.length})
+                </Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedFilter === 'ambulances' && styles.filterButtonActive,
-            ]}
-            onPress={() => setSelectedFilter('ambulances')}
-          >
-            <MaterialIcons
-              name="local-hospital"
-              size={18}
-              color={selectedFilter === 'ambulances' ? '#fff' : '#F44336'}
-            />
-            <Text
-              style={[
-                styles.filterButtonText,
-                selectedFilter === 'ambulances' && styles.filterButtonTextActive,
-              ]}
-            >
-              Ambulances ({ambulances.length})
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  selectedFilter === 'nurses' && styles.filterButtonActive,
+                ]}
+                onPress={() => setSelectedFilter('nurses')}
+              >
+                <MaterialIcons
+                  name="favorite"
+                  size={18}
+                  color={selectedFilter === 'nurses' ? '#fff' : '#FF6B6B'}
+                />
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    selectedFilter === 'nurses' && styles.filterButtonTextActive,
+                  ]}
+                >
+                  Nurses ({nurses.length})
+                </Text>
+              </TouchableOpacity>
 
-      {/* Professionals List */}
-      <ScrollView
-        ref={scrollRef}
-        style={styles.listContainer}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#1976D2" />
-            <Text style={styles.loadingText}>Loading nearby services...</Text>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  selectedFilter === 'ambulances' && styles.filterButtonActive,
+                ]}
+                onPress={() => setSelectedFilter('ambulances')}
+              >
+                <MaterialIcons
+                  name="local-hospital"
+                  size={18}
+                  color={selectedFilter === 'ambulances' ? '#fff' : '#FF9800'}
+                />
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    selectedFilter === 'ambulances' && styles.filterButtonTextActive,
+                  ]}
+                >
+                  Ambulances ({ambulances.length})
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        ) : displayProfessionals().length > 0 ? (
-          displayProfessionals().map((professional, index) => (
-            <ProfessionalCard
-              key={`${professional.type}-${index}`}
-              professional={professional}
-              type={professional.type}
-            />
-          ))
-        ) : (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="location-off" size={64} color="#DDD" />
-            <Text style={styles.emptyText}>No services found in your area</Text>
-            <Text style={styles.emptySubtext}>Try expanding your search radius</Text>
-          </View>
-        )}
-      </ScrollView>
 
-      {/* Legend */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#1976D2' }]} />
-          <Text style={styles.legendText}>Doctors</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#E91E63' }]} />
-          <Text style={styles.legendText}>Nurses</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#F44336' }]} />
-          <Text style={styles.legendText}>Ambulances</Text>
-        </View>
-      </View>
+          {/* Professionals List */}
+          <ScrollView
+            ref={scrollRef}
+            style={styles.listContainer}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#5B5FFF" />
+                <Text style={styles.loadingText}>Loading nearby services...</Text>
+              </View>
+            ) : displayProfessionals().length > 0 ? (
+              displayProfessionals().map((professional: any, index: number) => (
+                <ProfessionalCard
+                  professional={professional}
+                  type={professional.type}
+                  isSelected={selectedMarker?.id === professional.id || selectedMarker?._id === professional._id}
+                  onPress={() => setSelectedMarker(professional)}
+                  key={`${professional.type}-${professional.id || professional._id}-${index}`}
+                />
+              ))
+            ) : (
+              <View style={styles.emptyContainer}>
+                <MaterialIcons name="location-off" size={64} color="#DDD" />
+                <Text style={styles.emptyText}>No services found in your area</Text>
+                <Text style={styles.emptySubtext}>Try expanding your search radius</Text>
+              </View>
+            )}
+          </ScrollView>
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -337,7 +414,12 @@ export default function DoctorsMapScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F8F9FF',
+  },
+  mapOnlyContainer: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   header: {
     flexDirection: 'row',
@@ -354,6 +436,10 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     marginLeft: -8,
+  },
+  mapToggleButton: {
+    padding: 8,
+    marginRight: -8,
   },
   headerTitle: {
     flex: 1,
@@ -374,16 +460,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#EEF2FF',
     marginHorizontal: 16,
     marginTop: 12,
     borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#5B5FFF',
   },
   locationText: {
     fontSize: 12,
-    color: '#1976D2',
+    color: '#5B5FFF',
     marginLeft: 8,
     fontWeight: '500',
+  },
+  mapView: {
+    marginTop: 8,
   },
   filterSection: {
     paddingVertical: 12,
@@ -403,18 +494,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#fff',
+    backgroundColor: '#F8F9FF',
     borderWidth: 1,
     borderColor: '#E0E0E0',
   },
   filterButtonActive: {
-    backgroundColor: '#1976D2',
-    borderColor: '#1976D2',
+    backgroundColor: '#5B5FFF',
+    borderColor: '#5B5FFF',
   },
   filterButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1976D2',
+    color: '#5B5FFF',
     marginLeft: 6,
   },
   filterButtonTextActive: {
@@ -439,6 +530,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
+  professionalCardSelected: {
+    borderColor: '#5B5FFF',
+    elevation: 5,
+    shadowOpacity: 0.2,
   },
   professionalIcon: {
     width: 50,

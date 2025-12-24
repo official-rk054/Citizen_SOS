@@ -34,6 +34,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/appointments', require('./routes/appointments'));
+app.use('/api/booking', require('./routes/booking'));
 app.use('/api/emergency', require('./routes/emergency'));
 app.use('/api/location', require('./routes/location'));
 

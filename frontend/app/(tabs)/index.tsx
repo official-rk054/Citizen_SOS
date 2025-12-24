@@ -17,8 +17,11 @@ import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useAuth } from '../../context/AuthContext';
 import { emergencyAPI, usersAPI, appointmentsAPI } from '../../utils/api';
-import { io } from 'socket.io-client';
+import io from 'socket.io-client';
 import { MaterialIcons, FontAwesome5, AntDesign } from '@expo/vector-icons';
+import GoogleMap from '../../components/GoogleMap';
+import ModernButton from '../../components/ModernButton';
+import ResponsiveCard from '../../components/ResponsiveCard';
 
 const SOCKET_URL = 'http://localhost:5000';
 const { width } = Dimensions.get('window');
@@ -29,13 +32,18 @@ export default function HomeScreen() {
   const [location, setLocation] = useState<any>(null);
   const [loadingEmergency, setLoadingEmergency] = useState(false);
   const [sosActive, setSosActive] = useState(false);
-  const [nearbyData, setNearbyData] = useState({
+  const [nearbyData, setNearbyData] = useState<{
+    doctors: Array<{ id: string; name: string; distance?: number; [key: string]: any }> ;
+    nurses: Array<{ id: string; name: string; distance?: number; [key: string]: any }>;
+    ambulances: Array<{ id: string; name: string; distance?: number; [key: string]: any }>;
+    volunteers: Array<{ id: string; name: string; distance?: number; [key: string]: any }>;
+  }>({
     doctors: [],
     nurses: [],
     ambulances: [],
     volunteers: [],
   });
-  const [upcomingAppointments, setUpcomingAppointments] = useState([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<Array<any>>([]);
   const socketRef = useRef<any>(null);
 
   // SOS Animation Refs
@@ -353,28 +361,28 @@ export default function HomeScreen() {
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#E3F2FD' }]}
+              style={[styles.actionButton, { backgroundColor: '#EEF2FF' }]}
               onPress={() => router.push('/appointments/book')}
             >
-              <MaterialIcons name="calendar-today" size={32} color="#1976D2" />
+              <MaterialIcons name="calendar-today" size={32} color="#5B5FFF" />
               <Text style={styles.actionButtonLabel}>Book</Text>
               <Text style={styles.actionButtonSub}>Appointment</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#F3E5F5' }]}
+              style={[styles.actionButton, { backgroundColor: '#FFE5E5' }]}
               onPress={() => router.push('/ambulance/book')}
             >
-              <MaterialIcons name="local-hospital" size={32} color="#7B1FA2" />
+              <MaterialIcons name="local-hospital" size={32} color="#FF6B6B" />
               <Text style={styles.actionButtonLabel}>Book</Text>
               <Text style={styles.actionButtonSub}>Ambulance</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#E8F5E9' }]}
+              style={[styles.actionButton, { backgroundColor: '#E5F5E5' }]}
               onPress={() => router.push('/nearby')}
             >
-              <MaterialIcons name="location-on" size={32} color="#388E3C" />
+              <MaterialIcons name="location-on" size={32} color="#4CAF50" />
               <Text style={styles.actionButtonLabel}>Find</Text>
               <Text style={styles.actionButtonSub}>Nearby</Text>
             </TouchableOpacity>
@@ -390,7 +398,7 @@ export default function HomeScreen() {
                 <Text style={styles.seeAll}>See All</Text>
               </TouchableOpacity>
             </View>
-            {upcomingAppointments.map((appointment, index) => (
+            {upcomingAppointments.map((appointment: any, index: number) => (
               <View key={appointment._id || index} style={styles.appointmentCard}>
                 <View style={styles.appointmentLeft}>
                   <View style={styles.dateCircle}>
@@ -428,7 +436,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
           {nearbyData.doctors.length > 0 ? (
-            nearbyData.doctors.map((doctor, index) => (
+            nearbyData.doctors.map((doctor: any, index: number) => (
               <View key={doctor._id || index} style={styles.professionalCard}>
                 <View style={styles.professionalAvatar}>
                   <MaterialIcons name="person" size={32} color="#fff" />
@@ -473,7 +481,7 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Nearby Nurses</Text>
             </View>
-            {nearbyData.nurses.map((nurse, index) => (
+            {nearbyData.nurses.map((nurse: any, index: number) => (
               <View key={nurse._id || index} style={styles.professionalCard}>
                 <View style={[styles.professionalAvatar, { backgroundColor: '#E91E63' }]}>
                   <MaterialIcons name="person" size={32} color="#fff" />
@@ -511,7 +519,7 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Available Ambulances</Text>
             </View>
-            {nearbyData.ambulances.map((ambulance, index) => (
+            {nearbyData.ambulances.map((ambulance: any, index: number) => (
               <View key={ambulance._id || index} style={styles.professionalCard}>
                 <View style={[styles.professionalAvatar, { backgroundColor: '#F44336' }]}>
                   <MaterialIcons name="local-hospital" size={32} color="#fff" />
@@ -594,11 +602,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#1976D2',
+    backgroundColor: '#5B5FFF',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 4,
-    shadowColor: '#1976D2',
+    shadowColor: '#5B5FFF',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -729,7 +737,7 @@ const styles = StyleSheet.create({
   },
   seeAll: {
     fontSize: 13,
-    color: '#1976D2',
+    color: '#5B5FFF',
     fontWeight: '600',
   },
 
@@ -757,7 +765,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#EEF2FF',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -765,11 +773,11 @@ const styles = StyleSheet.create({
   dateDay: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1976D2',
+    color: '#5B5FFF',
   },
   dateMonth: {
     fontSize: 11,
-    color: '#1976D2',
+    color: '#5B5FFF',
     fontWeight: '600',
   },
   appointmentInfo: {
@@ -782,7 +790,7 @@ const styles = StyleSheet.create({
   },
   appointmentTime: {
     fontSize: 12,
-    color: '#1976D2',
+    color: '#5B5FFF',
     marginTop: 4,
     fontWeight: '500',
   },
@@ -808,7 +816,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#1976D2',
+    backgroundColor: '#5B5FFF',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -846,7 +854,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#1976D2',
+    backgroundColor: '#5B5FFF',
   },
   bookBtnText: {
     color: '#fff',

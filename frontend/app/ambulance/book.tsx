@@ -11,7 +11,9 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { usersAPI } from '../../utils/api';
+import * as Location from 'expo-location';
+import { useAuth } from '../../context/AuthContext';
+import { usersAPI, bookingAPI } from '../../utils/api';
 
 interface Ambulance {
   _id: string;
@@ -22,6 +24,7 @@ interface Ambulance {
 
 export default function BookAmbulanceScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [ambulances, setAmbulances] = useState<Ambulance[]>([]);
   const [selectedAmbulance, setSelectedAmbulance] = useState<Ambulance | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,7 +36,18 @@ export default function BookAmbulanceScreen() {
 
   const fetchAmbulances = async () => {
     try {
-      const response = await usersAPI.getNearbyAmbulances({ latitude: 0, longitude: 0, radius: 100 });
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required');
+        setLoading(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const response = await usersAPI.getNearbyAmbulances(loc.coords.latitude, loc.coords.longitude, 15);
       setAmbulances(response.data);
     } catch (error) {
       console.error('Error fetching ambulances:', error);
@@ -51,6 +65,13 @@ export default function BookAmbulanceScreen() {
 
     try {
       setBookingLoading(true);
+      const bookingData = {
+        ambulanceId: selectedAmbulance._id,
+        serviceType: 'non-emergency-transport',
+        description: 'Ambulance booking for non-emergency transport',
+        amount: 0,
+      };
+      await bookingAPI.bookService(bookingData);
       Alert.alert('Success', 'Ambulance booked successfully');
       router.back();
     } catch (error) {

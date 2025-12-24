@@ -83,6 +83,18 @@ export const appointmentsAPI = {
     api.put(`/appointments/${appointmentId}`, { status }),
 };
 
+// Booking API calls (Ambulance & Services)
+export const bookingAPI = {
+  bookService: async (bookingData: any) => api.post('/booking/book', bookingData),
+  getUserBookings: async (userId: string) => api.get(`/booking/user/${userId}`),
+  updateBookingStatus: async (bookingId: string, status: string, paymentStatus?: string) =>
+    api.put(`/booking/${bookingId}`, { status, paymentStatus }),
+  getNearbyAmbulances: async (latitude: number, longitude: number, radius: number = 10) =>
+    api.get('/booking/nearby-ambulances', { params: { latitude, longitude, radius } }),
+  cancelBooking: async (bookingId: string) =>
+    api.post(`/booking/${bookingId}/cancel`, {}),
+};
+
 // Emergency API calls
 export const emergencyAPI = {
   triggerEmergency: async (emergencyData: any) => api.post('/emergency/trigger', emergencyData),

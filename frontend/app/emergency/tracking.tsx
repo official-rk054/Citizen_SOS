@@ -15,9 +15,10 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { emergencyAPI, usersAPI } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { io } from 'socket.io-client';
+import io from 'socket.io-client';
 import { MaterialIcons, AntDesign } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import GoogleMap from '../../components/GoogleMap';
 
 const SOCKET_URL = 'http://localhost:5000';
 const { height, width } = Dimensions.get('window');
