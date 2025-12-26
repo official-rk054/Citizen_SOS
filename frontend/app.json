@@ -20,7 +20,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "enableDangerousExperimentalLeanBuildForAndroid": false
+      "enableDangerousExperimentalLeanBuildForAndroid": false,
+      "package": "com.anonymous.frontend"
     },
     "web": {
       "output": "static",
