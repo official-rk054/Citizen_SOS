@@ -31,8 +31,17 @@ interface MapMarker {
   onPress?: (marker: MapMarker) => void;
 }
 
+interface Region {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}
+
 interface GoogleMapProps {
+  initialRegion?: Region;
   initialLocation?: Location;
+  userLocation?: Location | null;
   markers: MapMarker[];
   showUserLocation?: boolean;
   onMarkerPress?: (marker: MapMarker) => void;
@@ -69,7 +78,9 @@ const getMarkerIcon = (type?: string) => {
 };
 
 export default function GoogleMap({
+  initialRegion,
   initialLocation,
+  userLocation: userLocationProp = null,
   markers,
   showUserLocation = true,
   onMarkerPress,
@@ -80,8 +91,10 @@ export default function GoogleMap({
   style,
 }: GoogleMapProps) {
   const mapRef = useRef<MapView>(null);
-  const [userLocation, setUserLocation] = useState<Location | null>(initialLocation || null);
-  const [loading, setLoading] = useState(!initialLocation);
+  const [userLocation, setUserLocation] = useState<Location | null>(
+    userLocationProp || initialLocation || (initialRegion ? { latitude: initialRegion.latitude, longitude: initialRegion.longitude } : null)
+  );
+  const [loading, setLoading] = useState(!userLocation);
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {

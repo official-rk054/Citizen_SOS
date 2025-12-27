@@ -11,10 +11,13 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Alert,
+  Modal,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { usersAPI } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
+import GoogleMap from '../../components/GoogleMap';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function NearbyFacilitiesScreen() {
   const { user } = useAuth();
@@ -27,6 +30,9 @@ export default function NearbyFacilitiesScreen() {
   const [loading, setLoading] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [userLocation, setUserLocation] = useState<any>(null);
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [selectedFacility, setSelectedFacility] = useState<any>(null);
+  const [mapMarkers, setMapMarkers] = useState<any[]>([]);
 
   const tabs = ['doctors', 'nurses', 'ambulances'] as const;
 
@@ -39,6 +45,18 @@ export default function NearbyFacilitiesScreen() {
       fetchNearbyFacilities();
     }
   }, [activeTab, radius, userLocation]);
+
+  const generateMapMarkers = (facilities: any[]) => {
+    return facilities.map((facility, index) => ({
+      id: facility.id || `marker-${index}`,
+      latitude: facility.latitude || userLocation?.latitude + (Math.random() - 0.5) * 0.05,
+      longitude: facility.longitude || userLocation?.longitude + (Math.random() - 0.5) * 0.05,
+      title: facility.name,
+      description: facility.specialization,
+      type: activeTab,
+      facility: facility,
+    }));
+  };
 
   const initializeLocation = async () => {
     try {
@@ -73,11 +91,15 @@ export default function NearbyFacilitiesScreen() {
         response = await usersAPI.getNearbyAmbulances(latitude, longitude, radius);
       }
 
-      setFacilities(response.data || []);
+      const data = response.data || [];
+      setFacilities(data);
+      setMapMarkers(generateMapMarkers(data));
     } catch (error) {
       console.error('Error fetching facilities:', error);
       // Use mock data as fallback
-      setFacilities(getMockData());
+      const mockData = getMockData();
+      setFacilities(mockData);
+      setMapMarkers(generateMapMarkers(mockData));
     } finally {
       setLoading(false);
     }
@@ -162,7 +184,13 @@ export default function NearbyFacilitiesScreen() {
   };
 
   const renderFacilityCard = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.card}>
+    <TouchableOpacity 
+      style={styles.card}
+      onPress={() => {
+        setSelectedFacility(item);
+        setShowMapModal(true);
+      }}
+    >
       <View style={styles.cardHeader}>
         <Text style={styles.icon}>{item.icon}</Text>
         <View style={styles.cardInfo}>
@@ -198,7 +226,13 @@ export default function NearbyFacilitiesScreen() {
           <Text style={styles.buttonIcon}>📅</Text>
           <Text style={styles.buttonText}>Book</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, styles.directionsButton]}>
+        <TouchableOpacity 
+          style={[styles.button, styles.directionsButton]}
+          onPress={() => {
+            setSelectedFacility(item);
+            setShowMapModal(true);
+          }}
+        >
           <Text style={styles.buttonIcon}>🗺️</Text>
           <Text style={styles.buttonText}>Map</Text>
         </TouchableOpacity>
@@ -307,10 +341,92 @@ export default function NearbyFacilitiesScreen() {
         </View>
       )}
 
-      {/* Map Button (Floating) */}
-      <TouchableOpacity style={styles.mapFab}>
+      {/* Map FAB */}
+      <TouchableOpacity 
+        style={styles.mapFab}
+        onPress={() => setShowMapModal(true)}
+      >
         <Text style={styles.mapIcon}>🗺️</Text>
       </TouchableOpacity>
+
+      {/* Map Modal */}
+      <Modal
+        visible={showMapModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowMapModal(false)}
+      >
+        <SafeAreaView style={styles.mapContainer}>
+          {/* Close Button */}
+          <View style={styles.mapHeader}>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setShowMapModal(false)}
+            >
+              <MaterialCommunityIcons name="close" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.mapTitle}>
+              {selectedFacility ? selectedFacility.name : 'Nearby ' + activeTab}
+            </Text>
+            <View style={{ width: 44 }} />
+          </View>
+
+          {/* Google Map */}
+          {userLocation && (
+            <GoogleMap
+              initialRegion={{
+                latitude: selectedFacility?.latitude || userLocation.latitude,
+                longitude: selectedFacility?.longitude || userLocation.longitude,
+                latitudeDelta: 0.0922,
+                longitudeDelta: 0.0421,
+              }}
+              markers={selectedFacility ? [selectedFacility] : mapMarkers}
+              userLocation={userLocation}
+            />
+          )}
+
+          {/* Facility Details Bottom Sheet */}
+          {selectedFacility && (
+            <View style={styles.facilityDetailsSheet}>
+              <View style={styles.detailsContent}>
+                <View style={styles.detailsHeader}>
+                  <Text style={styles.detailsIcon}>{selectedFacility.icon}</Text>
+                  <View>
+                    <Text style={styles.detailsName}>{selectedFacility.name}</Text>
+                    <Text style={styles.detailsSpec}>{selectedFacility.specialization}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailsMeta}>
+                  <View style={styles.detailsMetaItem}>
+                    <Text>⭐</Text>
+                    <Text style={styles.detailsMetaText}>{selectedFacility.rating}</Text>
+                  </View>
+                  <View style={styles.detailsMetaItem}>
+                    <Text>📍</Text>
+                    <Text style={styles.detailsMetaText}>{selectedFacility.distance.toFixed(1)} km</Text>
+                  </View>
+                  <View style={styles.detailsMetaItem}>
+                    <Text>{selectedFacility.availability ? '🟢' : '🔴'}</Text>
+                    <Text style={styles.detailsMetaText}>
+                      {selectedFacility.availability ? 'Available' : 'Busy'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailsActions}>
+                  <TouchableOpacity style={styles.detailsButton}>
+                    <Text style={styles.detailsButtonText}>📞 Call Now</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.detailsButton}>
+                    <Text style={styles.detailsButtonText}>📅 Book Appointment</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -567,4 +683,103 @@ const styles = StyleSheet.create({
   mapIcon: {
     fontSize: 28,
   },
+  // Map Modal Styles
+  mapContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  mapHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#5B5FFF',
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    flex: 1,
+    textAlign: 'center',
+  },
+  facilityDetailsSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  detailsContent: {
+    gap: 16,
+  },
+  detailsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  detailsIcon: {
+    fontSize: 40,
+  },
+  detailsName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  detailsSpec: {
+    fontSize: 13,
+    color: '#999',
+    marginTop: 2,
+  },
+  detailsMeta: {
+    flexDirection: 'row',
+    gap: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  detailsMetaItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  detailsMetaText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  detailsActions: {
+    gap: 10,
+  },
+  detailsButton: {
+    backgroundColor: '#5B5FFF',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  detailsButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  }
 });

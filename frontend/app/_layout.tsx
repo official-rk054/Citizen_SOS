@@ -9,8 +9,7 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { storageService } from '../utils/storage';
 
-// Polyfills for Bridgeless mode compatibility
-import '../polyfills/platformConstants';
+
 
 function RootContent() {
   const colorScheme = useColorScheme();

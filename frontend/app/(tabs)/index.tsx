@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useAuth } from '../../context/AuthContext';
 import { emergencyAPI, usersAPI, appointmentsAPI } from '../../utils/api';
+import { logSystemInfo } from '../../utils/systemInfo';
 import io from 'socket.io-client';
 import { MaterialIcons, FontAwesome5, AntDesign } from '@expo/vector-icons';
 import GoogleMap from '../../components/GoogleMap';
@@ -55,13 +56,10 @@ export default function HomeScreen() {
   const [upcomingAppointments, setUpcomingAppointments] = useState<Array<any>>([]);
   const socketRef = useRef<any>(null);
 
-  // SOS Animation Refs
-  const sosScaleAnim = useRef(new Animated.Value(1)).current;
-  const sosPulseAnim = useRef(new Animated.Value(1)).current;
-  const sosRipple1Anim = useRef(new Animated.Value(0)).current;
-  const sosRipple2Anim = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
+    // Log system information on app startup
+    logSystemInfo();
+    
     initializeLocation();
     if (user?.id) {
       fetchNearbyServices();
@@ -81,22 +79,7 @@ export default function HomeScreen() {
   // SOS Pulse animation
   useEffect(() => {
     if (sosActive) {
-      const pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(sosPulseAnim, {
-            toValue: 1.1,
-            duration: 600,
-            useNativeDriver: true,
-          }),
-          Animated.timing(sosPulseAnim, {
-            toValue: 1,
-            duration: 600,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      pulse.start();
-      return () => pulse.stop();
+      // Animation is now handled by SOSButton component
     }
   }, [sosActive]);
 
@@ -123,7 +106,7 @@ export default function HomeScreen() {
           timeInterval: 10000,
           distanceInterval: 50,
         },
-        (newLocation) => {
+        (newLocation: any) => {
           setLocation(newLocation.coords);
           if (user?.id) {
             updateLocation(newLocation.coords.latitude, newLocation.coords.longitude);
@@ -170,46 +153,7 @@ export default function HomeScreen() {
   };
 
   const triggerSOSAnimation = () => {
-    // Scale animation
-    Animated.sequence([
-      Animated.timing(sosScaleAnim, {
-        toValue: 0.95,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(sosScaleAnim, {
-        toValue: 1.05,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(sosScaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // Ripple animations
-    Animated.parallel([
-      Animated.sequence([
-        Animated.timing(sosRipple1Anim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.sequence([
-        Animated.delay(200),
-        Animated.timing(sosRipple2Anim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start(() => {
-      sosRipple1Anim.setValue(0);
-      sosRipple2Anim.setValue(0);
-    });
+    // Animation is now handled by SOSButton component
   };
 
   const handleSOS = async () => {
@@ -220,7 +164,6 @@ export default function HomeScreen() {
 
     setLoadingEmergency(true);
     setSosActive(true);
-    triggerSOSAnimation();
 
     try {
       const emergencyContacts = user?.emergencyContacts || [];
@@ -274,27 +217,7 @@ export default function HomeScreen() {
   };
 
   const RippleComponent = ({ animatedValue }: any) => {
-    const rippleOpacity = animatedValue.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.5, 0],
-    });
-
-    const rippleScale = animatedValue.interpolate({
-      inputRange: [0, 1],
-      outputRange: [1, 3],
-    });
-
-    return (
-      <Animated.View
-        style={[
-          styles.ripple,
-          {
-            opacity: rippleOpacity,
-            transform: [{ scale: rippleScale }],
-          },
-        ]}
-      />
-    );
+    return null;
   };
 
   return (
@@ -369,6 +292,16 @@ export default function HomeScreen() {
           colors={{ light: colors }}
         />
 
+        {/* SOS Demo Button */}
+        <View style={styles.sosDemoContainer}>
+          <TouchableOpacity
+            style={[styles.sosDemoButton, { backgroundColor: colors.primary }]}
+            onPress={() => router.push('/emergency/sos-demo')}>
+            <MaterialIcons name="emergency" size={20} color="#fff" />
+            <Text style={styles.sosDemoButtonText}>View SOS Demo & Features</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Quick Actions */}
         <QuickActions
           actions={[
@@ -394,6 +327,13 @@ export default function HomeScreen() {
               accentColor: colors.secondaryGradientEnd,
             },
             {
+              id: 'web-location',
+              icon: 'location-on',
+              label: 'Web Location',
+              color: '#06B6D4',
+              accentColor: '#0891B2',
+            },
+            {
               id: 'health-records',
               icon: 'file-document-outline',
               label: 'Health Records',
@@ -413,6 +353,9 @@ export default function HomeScreen() {
               case 'find-nearby':
                 router.push('/nearby');
                 break;
+              case 'web-location':
+                router.push('/nearby/web-location');
+                break;
               case 'health-records':
                 router.push('/profile');
                 break;
@@ -423,7 +366,7 @@ export default function HomeScreen() {
         {/* Appointments Section */}
         {upcomingAppointments.length > 0 && (
           <AppointmentsList
-            appointments={upcomingAppointments.map((apt: any) => ({
+            appointments={upcomingAppointments.map((apt: any, index: number) => ({
               id: apt._id,
               doctorName: apt.professionalId?.name || 'Professional',
               specialty: apt.professionalId?.specialization || 'General Practitioner',
@@ -432,7 +375,9 @@ export default function HomeScreen() {
                 month: 'short',
                 day: 'numeric',
               }),
-              status: 'upcoming',
+              status: 'upcoming' as const,
+              colors: { light: colors },
+              index: index,
             }))}
             colors={{ light: colors }}
             onAppointmentPress={(id) => {
@@ -735,6 +680,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 12,
+  },
+  sosDemoContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  sosDemoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 8,
+  },
+  sosDemoButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
 
   // Empty State

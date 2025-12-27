@@ -1,0 +1,10 @@
+declare module '@expo/vector-icons';
+declare module 'expo-router';
+declare module 'expo-status-bar';
+declare module '@react-navigation/native';
+declare module 'react-native-reanimated';
+declare module 'expo-constants';
+declare module 'expo-location';
+declare module 'expo-contacts';
+declare module 'expo-linear-gradient';
+declare module 'react-native-maps';
