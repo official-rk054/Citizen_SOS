@@ -58,6 +58,79 @@ io.on('connection', (socket) => {
       latitude: data.latitude,
       longitude: data.longitude,
       emergencyContactPhone: data.emergencyContactPhone,
+      timestamp: new Date(),
+      liveTracking: data.liveTracking || false
+    });
+  });
+
+  socket.on('volunteer-alert', (data) => {
+    io.emit('volunteer-notification', {
+      victimId: data.victimId,
+      victimName: data.victimName,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      severity: data.severity,
+      timestamp: new Date(),
+      message: 'Urgent: Emergency assistance needed'
+    });
+  });
+
+  // New: Nurse notification handler
+  socket.on('nurse-notification', (data) => {
+    console.log('Nurse notification triggered:', data.emergencyId);
+    
+    // Broadcast to all connected nurses
+    io.emit('nurse-alert', {
+      emergencyId: data.emergencyId,
+      victimId: data.victimId,
+      victimName: data.victimName,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      severity: data.severity || 'critical',
+      nurseIds: data.nurseIds,
+      timestamp: data.timestamp || new Date(),
+      message: data.message || 'URGENT: Emergency Alert - Immediate assistance needed'
+    });
+
+    // Send notification to specific nurses
+    if (data.nurseIds && data.nurseIds.length > 0) {
+      io.emit('direct-nurse-alert', {
+        emergencyId: data.emergencyId,
+        targetNurses: data.nurseIds,
+        victimName: data.victimName,
+        location: {
+          latitude: data.latitude,
+          longitude: data.longitude
+        },
+        severity: data.severity || 'critical',
+        timestamp: data.timestamp || new Date()
+      });
+    }
+  });
+
+  // New: Ambulance tracking handler
+  socket.on('ambulance-location', (data) => {
+    io.emit('ambulance-update', {
+      emergencyId: data.emergencyId,
+      ambulanceId: data.ambulanceId,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      speed: data.speed || 0,
+      heading: data.heading || 0,
+      eta: data.eta || 0,
+      distance: data.distance || 0,
+      status: data.status || 'en-route',
+      timestamp: new Date()
+    });
+  });
+
+  // New: Responder call handler
+  socket.on('responder-call', (data) => {
+    io.emit('responder-calling', {
+      emergencyId: data.emergencyId,
+      responderId: data.responderId,
+      responderName: data.responderName,
+      responderPhone: data.responderPhone,
       timestamp: new Date()
     });
   });

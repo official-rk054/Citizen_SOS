@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,80 +9,164 @@ import {
   TextInput,
   Modal,
   FlatList,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
-
-const paymentMethods = [
-  {
-    id: '1',
-    type: 'card',
-    label: 'Credit Card',
-    icon: '💳',
-    details: 'Visa **** 4242',
-    isDefault: true,
-  },
-  {
-    id: '2',
-    type: 'upi',
-    label: 'UPI',
-    icon: '📱',
-    details: 'user@upi',
-    isDefault: false,
-  },
-  {
-    id: '3',
-    type: 'wallet',
-    label: 'Google Pay',
-    icon: '💰',
-    details: '+91 98765 43210',
-    isDefault: false,
-  },
-];
+import { usersAPI } from '../../utils/api';
+import { useAuth } from '../../context/AuthContext';
+import { MaterialIcons } from '@expo/vector-icons';
 
 export default function PaymentMethodsScreen() {
+  const { user } = useAuth();
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addingPayment, setAddingPayment] = useState(false);
+  
+  // Form fields
   const [paymentType, setPaymentType] = useState('card');
   const [cardNumber, setCardNumber] = useState('');
   const [holderName, setHolderName] = useState('');
+  const [expiryMonth, setExpiryMonth] = useState('');
+  const [expiryYear, setExpiryYear] = useState('');
 
-  const handleAddPayment = () => {
-    if (!cardNumber || !holderName) {
-      alert('Please fill in all fields');
-      return;
+  useEffect(() => {
+    if (user?.id) {
+      fetchPaymentMethods();
     }
-    // Add payment logic
-    setShowAddModal(false);
-    setCardNumber('');
-    setHolderName('');
+  }, [user?.id]);
+
+  const fetchPaymentMethods = async () => {
+    try {
+      setLoading(true);
+      const response = await usersAPI.getPaymentMethods(user!.id);
+      setPaymentMethods(response.data || []);
+    } catch (error) {
+      console.error('Error fetching payment methods:', error);
+      Alert.alert('Error', 'Failed to load payment methods');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const renderPaymentMethod = ({ item }: { item: (typeof paymentMethods)[0] }) => (
-    <TouchableOpacity
-      style={[
-        styles.paymentCard,
-        selectedPayment === item.id && styles.paymentCardSelected,
-      ]}
-      onPress={() => setSelectedPayment(item.id)}
-    >
+  const handleAddPayment = async () => {
+    if (!cardNumber || !holderName || !expiryMonth || !expiryYear) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    setAddingPayment(true);
+    try {
+      const paymentData = {
+        type: paymentType,
+        cardHolderName: holderName,
+        cardLast4: cardNumber.slice(-4),
+        expiryMonth: parseInt(expiryMonth),
+        expiryYear: parseInt(expiryYear),
+        isDefault: paymentMethods.length === 0,
+      };
+
+      const response = await usersAPI.addPaymentMethod(user!.id, paymentData);
+      setPaymentMethods([...paymentMethods, response.data]);
+      setShowAddModal(false);
+      setCardNumber('');
+      setHolderName('');
+      setExpiryMonth('');
+      setExpiryYear('');
+      Alert.alert('Success', 'Payment method added successfully');
+    } catch (error) {
+      console.error('Error adding payment:', error);
+      Alert.alert('Error', 'Failed to add payment method');
+    } finally {
+      setAddingPayment(false);
+    }
+  };
+
+  const handleDeletePayment = async (methodId: string) => {
+    Alert.alert('Delete Payment', 'Remove this payment method?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await usersAPI.deletePaymentMethod(user!.id, methodId);
+            setPaymentMethods(paymentMethods.filter(p => p._id !== methodId));
+            Alert.alert('Deleted', 'Payment method removed');
+          } catch (error) {
+            console.error('Error deleting payment:', error);
+            Alert.alert('Error', 'Failed to delete payment method');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleSetDefault = async (methodId: string) => {
+    try {
+      await usersAPI.setDefaultPayment(user!.id, methodId);
+      setPaymentMethods(
+        paymentMethods.map(p => ({
+          ...p,
+          isDefault: p._id === methodId
+        }))
+      );
+      Alert.alert('Success', 'Default payment method updated');
+    } catch (error) {
+      console.error('Error setting default:', error);
+      Alert.alert('Error', 'Failed to set default payment');
+    }
+  };
+
+  const renderPaymentMethod = ({ item }: any) => (
+    <View style={[styles.paymentCard, item.isDefault && styles.paymentCardSelected]}>
       <View style={styles.paymentLeft}>
-        <Text style={styles.paymentIcon}>{item.icon}</Text>
+        <Text style={styles.paymentIcon}>
+          {item.type === 'card' ? '💳' : item.type === 'upi' ? '📱' : '💰'}
+        </Text>
         <View>
-          <Text style={styles.paymentLabel}>{item.label}</Text>
-          <Text style={styles.paymentDetails}>{item.details}</Text>
+          <Text style={styles.paymentLabel}>{item.displayName}</Text>
+          <Text style={styles.paymentDetails}>{item.type}</Text>
         </View>
       </View>
       <View style={styles.paymentRight}>
         {item.isDefault && (
           <View style={styles.defaultBadge}>
-            <Text style={styles.defaultText}>Default</Text>
+            <Text style={styles.defaultText}>DEFAULT</Text>
           </View>
         )}
-        {selectedPayment === item.id && (
-          <Text style={styles.checkmark}>✓</Text>
-        )}
+        <TouchableOpacity
+          onPress={() => {
+            Alert.alert('Payment Method', 'What would you like to do?', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Set as Default',
+                onPress: () => handleSetDefault(item._id)
+              },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: () => handleDeletePayment(item._id)
+              }
+            ]);
+          }}
+        >
+          <Text style={styles.checkmark}>⋮</Text>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    </View>
   );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#5B5FFF" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -104,12 +188,33 @@ export default function PaymentMethodsScreen() {
               <Text style={styles.addButtonText}>+ Add New</Text>
             </TouchableOpacity>
           </View>
-          <FlatList
-            data={paymentMethods}
-            renderItem={renderPaymentMethod}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-          />
+          {paymentMethods.length === 0 ? (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <Text style={{ fontSize: 14, color: '#999', marginBottom: 10 }}>
+                No payment methods saved yet
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowAddModal(true)}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  backgroundColor: '#5B5FFF',
+                  borderRadius: 8,
+                }}
+              >
+                <Text style={{ color: 'white', fontWeight: '600' }}>
+                  Add Payment Method
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={paymentMethods}
+              renderItem={renderPaymentMethod}
+              keyExtractor={(item) => item._id}
+              scrollEnabled={false}
+            />
+          )}
         </View>
 
         {/* Billing Address */}
@@ -219,26 +324,37 @@ export default function PaymentMethodsScreen() {
               placeholder="Cardholder Name"
               value={holderName}
               onChangeText={setHolderName}
+              editable={!addingPayment}
             />
             <TextInput
               style={styles.input}
-              placeholder="Card Number"
+              placeholder="Card Number (last 4 digits)"
               value={cardNumber}
               onChangeText={setCardNumber}
               keyboardType="numeric"
-              maxLength={19}
+              maxLength={4}
+              editable={!addingPayment}
             />
-            <TextInput
-              style={[styles.input, styles.rowInput]}
-              placeholder="MM/YY"
-              maxLength={5}
-            />
-            <TextInput
-              style={[styles.input, styles.rowInput]}
-              placeholder="CVV"
-              maxLength={3}
-              keyboardType="numeric"
-            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="Month (MM)"
+                value={expiryMonth}
+                onChangeText={setExpiryMonth}
+                keyboardType="numeric"
+                maxLength={2}
+                editable={!addingPayment}
+              />
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="Year (YY)"
+                value={expiryYear}
+                onChangeText={setExpiryYear}
+                keyboardType="numeric"
+                maxLength={2}
+                editable={!addingPayment}
+              />
+            </View>
 
             {/* Set as Default */}
             <TouchableOpacity style={styles.checkboxContainer}>
@@ -250,14 +366,20 @@ export default function PaymentMethodsScreen() {
 
             {/* Buttons */}
             <TouchableOpacity
-              style={styles.addButton}
+              style={[styles.addButton, addingPayment && { opacity: 0.6 }]}
               onPress={handleAddPayment}
+              disabled={addingPayment}
             >
-              <Text style={styles.addButtonText}>Add Payment Method</Text>
+              {addingPayment ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.addButtonText}>Add Payment Method</Text>
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => setShowAddModal(false)}
+              disabled={addingPayment}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>

@@ -8,8 +8,10 @@
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
+    "jsEngine": "jsc",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "newArchEnabled": false
     },
     "android": {
       "adaptiveIcon": {
@@ -21,6 +23,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "enableDangerousExperimentalLeanBuildForAndroid": false,
+      "newArchEnabled": false,
       "package": "com.anonymous.frontend"
     },
     "web": {

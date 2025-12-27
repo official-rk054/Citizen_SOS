@@ -11,6 +11,7 @@ import {
   FlatList,
   Dimensions,
   Animated,
+  Vibration,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { emergencyAPI, usersAPI } from '../../utils/api';
@@ -36,37 +37,169 @@ export default function EmergencyTrackingScreen() {
     ambulances: [],
   });
   const [selectedResponder, setSelectedResponder] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'status' | 'responders' | 'contacts'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'responders' | 'contacts' | 'map'>('status');
+  const [ambulanceLocation, setAmbulanceLocation] = useState<any>(null);
+  const [notifiedNurses, setNotifiedNurses] = useState<string[]>([]);
+  const [sosTimestamp, setSosTimestamp] = useState<Date | null>(null);
   const socketRef = useRef<any>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const heartbeatAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     fetchEmergencyDetails();
     setupSocket();
     getLocation();
-
-    // Pulse animation for active emergency
+    
     if (isSOS === 'true') {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
+      setSosTimestamp(new Date());
+      startSOSAnimations();
+      notifyNearbyNurses();
+      simulateAmbulanceTracking();
+      Vibration.vibrate([0, 100, 50, 100]);
     }
 
     return () => {
       socketRef.current?.disconnect();
     };
   }, [emergencyId]);
+
+  const startSOSAnimations = () => {
+    // Pulse animation for status badge
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.15,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Expand animation for alert circle
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Rotation for loading indicator
+    Animated.loop(
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 3000,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    // Heartbeat effect for nearby responders
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(heartbeatAnim, {
+          toValue: 1.1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartbeatAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartbeatAnim, {
+          toValue: 1.1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartbeatAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.delay(500),
+      ])
+    ).start();
+  };
+
+  const notifyNearbyNurses = async () => {
+    try {
+      if (location) {
+        // Get nearby nurses
+        const nursesResponse = await usersAPI.getNearbyProfessionals(
+          'nurse',
+          location.latitude,
+          location.longitude,
+          2
+        );
+        
+        if (nursesResponse.data && nursesResponse.data.length > 0) {
+          const nurseIds = nursesResponse.data.map((nurse: any) => nurse._id);
+          setNotifiedNurses(nurseIds);
+
+          // Emit notification through socket
+          socketRef.current?.emit('nurse-notification', {
+            emergencyId,
+            victimId: user?.id,
+            victimName: user?.name,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            severity: emergency?.severity || 'critical',
+            nurseIds,
+            timestamp: new Date(),
+            message: 'URGENT: SOS Emergency Alert - Immediate assistance needed',
+          });
+
+          // Show notification
+          Alert.alert(
+            'Nurses Notified',
+            `${nursesResponse.data.length} nearby nurse(s) have been notified of the emergency`
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error notifying nurses:', error);
+    }
+  };
+
+  const simulateAmbulanceTracking = () => {
+    // Simulate ambulance location updates
+    let ambulanceIndex = 0;
+    const ambulancePositions = [
+      { latitude: emergency?.latitude + 0.01, longitude: emergency?.longitude + 0.01, distance: 2.5 },
+      { latitude: emergency?.latitude + 0.008, longitude: emergency?.longitude + 0.008, distance: 1.8 },
+      { latitude: emergency?.latitude + 0.005, longitude: emergency?.longitude + 0.005, distance: 1.2 },
+      { latitude: emergency?.latitude + 0.002, longitude: emergency?.longitude + 0.002, distance: 0.5 },
+    ];
+
+    const interval = setInterval(() => {
+      if (ambulanceIndex < ambulancePositions.length) {
+        setAmbulanceLocation({
+          ...ambulancePositions[ambulanceIndex],
+          eta: Math.max(5 - ambulanceIndex * 1.5, 1),
+          speed: 40 + Math.random() * 20,
+        });
+        ambulanceIndex++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  };
 
   const getLocation = async () => {
     try {
@@ -123,6 +256,31 @@ export default function EmergencyTrackingScreen() {
     socketRef.current.on('emergency-update', (data: any) => {
       if (data.emergencyId === emergencyId) {
         setEmergency((prev: any) => ({ ...prev, ...data }));
+      }
+    });
+
+    // Nurse notification listener
+    socketRef.current.on('nurse-alert', (data: any) => {
+      if (data.emergencyId === emergencyId) {
+        console.log('Nurse alert received:', data);
+        setNotifiedNurses(data.nurseIds || []);
+        Alert.alert('Nurses Notified', `${data.nurseIds?.length || 0} nurse(s) have been alerted for assistance`);
+      }
+    });
+
+    // Direct nurse alert listener
+    socketRef.current.on('direct-nurse-alert', (data: any) => {
+      if (data.emergencyId === emergencyId) {
+        console.log('Direct nurse alert received:', data);
+        Alert.alert('Emergency Response', 'Nearby nurses are responding to your location');
+      }
+    });
+
+    // Responder calling listener
+    socketRef.current.on('responder-calling', (data: any) => {
+      if (data.emergencyId === emergencyId) {
+        console.log('Responder calling:', data);
+        Alert.alert('Incoming Call', `${data.responderName} is calling you...`);
       }
     });
   };
@@ -289,6 +447,27 @@ export default function EmergencyTrackingScreen() {
           </Text>
         </TouchableOpacity>
 
+        {isSOS === 'true' && (
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'map' && styles.tabActive]}
+            onPress={() => setActiveTab('map')}
+          >
+            <MaterialIcons
+              name="map"
+              size={20}
+              color={activeTab === 'map' ? '#E53935' : '#999'}
+            />
+            <Text
+              style={[
+                styles.tabLabel,
+                activeTab === 'map' && styles.tabLabelActive,
+              ]}
+            >
+              Live Map
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {showNearby === 'true' && (
           <TouchableOpacity
             style={[styles.tab, activeTab === 'responders' && styles.tabActive]}
@@ -335,9 +514,106 @@ export default function EmergencyTrackingScreen() {
         style={styles.contentArea}
         contentContainerStyle={styles.contentPadding}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={activeTab !== 'map'}
       >
         {activeTab === 'status' && (
           <View>
+            {/* SOS Status Indicator */}
+            {isSOS === 'true' && (
+              <View style={styles.sosAlertCard}>
+                <Animated.View
+                  style={[
+                    styles.sosAlertCircle,
+                    { transform: [{ scale: scaleAnim }] },
+                  ]}
+                />
+                <View style={styles.sosAlertContent}>
+                  <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                    <Text style={styles.sosAlertIcon}>🆘</Text>
+                  </Animated.View>
+                  <View style={styles.sosAlertText}>
+                    <Text style={styles.sosAlertTitle}>SOS ACTIVE</Text>
+                    <Text style={styles.sosAlertTime}>
+                      {sosTimestamp ? new Date(sosTimestamp).toLocaleTimeString() : 'Just now'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Ambulance Tracking */}
+            {ambulanceLocation && (
+              <View style={styles.infoCard}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardIcon}>🚑</Text>
+                  <Text style={styles.cardTitle}>Ambulance En Route</Text>
+                  <Animated.View
+                    style={[
+                      styles.trackingIndicator,
+                      { transform: [{ rotate: rotateAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '360deg'],
+                      }) }] },
+                    ]}
+                  >
+                    <MaterialIcons name="my-location" size={16} color="#E53935" />
+                  </Animated.View>
+                </View>
+                <View style={styles.cardContent}>
+                  <View style={styles.ambulanceStatus}>
+                    <View style={styles.statusRow}>
+                      <Text style={styles.statusLabel}>Distance:</Text>
+                      <Text style={styles.statusValue}>{ambulanceLocation.distance?.toFixed(1)} km</Text>
+                    </View>
+                    <View style={styles.statusRow}>
+                      <Text style={styles.statusLabel}>ETA:</Text>
+                      <Text style={styles.statusValue}>{ambulanceLocation.eta?.toFixed(0)} min</Text>
+                    </View>
+                    <View style={styles.statusRow}>
+                      <Text style={styles.statusLabel}>Speed:</Text>
+                      <Text style={styles.statusValue}>{ambulanceLocation.speed?.toFixed(0)} km/h</Text>
+                    </View>
+                  </View>
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${Math.min((ambulanceLocation.distance / 2.5) * 100, 100)}%` },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Nurse Notification Status */}
+            {notifiedNurses.length > 0 && (
+              <Animated.View
+                style={[
+                  styles.infoCard,
+                  { transform: [{ scale: heartbeatAnim }] },
+                ]}
+              >
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardIcon}>👩‍⚕️</Text>
+                  <Text style={styles.cardTitle}>Nurses Notified</Text>
+                </View>
+                <View style={styles.cardContent}>
+                  <View style={styles.notificationBadges}>
+                    {notifiedNurses.map((nurseId, idx) => (
+                      <View key={idx} style={styles.notificationBadge}>
+                        <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
+                        <Text style={styles.badgeText}>Nurse {idx + 1} Alerted</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={styles.notificationMessage}>
+                    Nearby nurses have been notified and are responding to your location
+                  </Text>
+                </View>
+              </Animated.View>
+            )}
+
             {/* Assigned Ambulance */}
             {emergency?.assignedAmbulanceId && (
               <View style={styles.infoCard}>
@@ -414,6 +690,113 @@ export default function EmergencyTrackingScreen() {
                   Time: {new Date(emergency?.createdAt).toLocaleTimeString()}
                 </Text>
               </View>
+            </View>
+          </View>
+        )}
+
+        {activeTab === 'map' && (
+          <View style={styles.mapContainer}>
+            {location && (
+              <GoogleMap
+                initialLocation={location}
+                markers={[
+                  {
+                    id: 'victim',
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    title: 'Your Location',
+                    description: 'Emergency Location',
+                    type: 'emergency',
+                  },
+                  ...(ambulanceLocation ? [{
+                    id: 'ambulance',
+                    latitude: ambulanceLocation.latitude,
+                    longitude: ambulanceLocation.longitude,
+                    title: 'Ambulance',
+                    description: 'Responding to emergency',
+                    type: 'ambulance',
+                  }] : []),
+                  ...nearbyResponders.ambulances.map((ambulance: any) => ({
+                    id: ambulance._id,
+                    latitude: ambulance.latitude || location.latitude,
+                    longitude: ambulance.longitude || location.longitude,
+                    title: ambulance.name || 'Ambulance',
+                    description: ambulance.vehicleNumber || 'Available',
+                    type: 'ambulance',
+                  })),
+                  ...nearbyResponders.nurses.map((nurse: any) => ({
+                    id: nurse._id,
+                    latitude: nurse.latitude || location.latitude,
+                    longitude: nurse.longitude || location.longitude,
+                    title: nurse.name || 'Nurse',
+                    description: 'Medical Professional',
+                    type: 'nurse',
+                  })),
+                ]}
+                showUserLocation={true}
+                onMarkerPress={(marker) => {
+                  if (marker.id !== 'victim') {
+                    setSelectedResponder({
+                      id: marker.id,
+                      name: marker.title,
+                      type: marker.type,
+                    });
+                  }
+                }}
+                showRadius={true}
+                radiusKm={5}
+                mapHeight={height * 0.5}
+              />
+            )}
+            
+            {!location && (
+              <View style={styles.mapLoadingContainer}>
+                <ActivityIndicator size="large" color="#E53935" />
+                <Text style={styles.mapLoadingText}>Loading map...</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {activeTab === 'map' && (
+          <View style={styles.mapLegendContainer}>
+            {/* Map Legend */}
+            <View style={styles.mapLegend}>
+              <View style={styles.legendItem}>
+                <Text style={styles.legendIcon}>📍</Text>
+                <Text style={styles.legendText}>Your Location</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <Text style={styles.legendIcon}>🚑</Text>
+                <Text style={styles.legendText}>Ambulance</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <Text style={styles.legendIcon}>👩‍⚕️</Text>
+                <Text style={styles.legendText}>Nearby Nurses</Text>
+              </View>
+            </View>
+
+            {/* Real-time Info */}
+            <View style={styles.realtimeInfo}>
+              <View style={styles.realtimeRow}>
+                <View style={styles.liveBadge}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>LIVE</Text>
+                </View>
+                <Text style={styles.realtimeValue}>Tracking Active</Text>
+              </View>
+              <View style={styles.realtimeRow}>
+                <MaterialIcons name="location-on" size={16} color="#E53935" />
+                <Text style={styles.realtimeValue}>
+                  {location ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}` : 'Getting location...'}
+                </Text>
+              </View>
+              {ambulanceLocation && (
+                <View style={styles.realtimeRow}>
+                  <MaterialIcons name="directions-car" size={16} color="#F44336" />
+                  <Text style={styles.realtimeValue}>Distance: {ambulanceLocation.distance?.toFixed(1)} km</Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -519,6 +902,269 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
+  },
+  sosAlertCard: {
+    backgroundColor: '#FFEBEE',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#E53935',
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 3,
+  },
+  sosAlertCircle: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: '#E53935',
+    opacity: 0.3,
+  },
+  sosAlertContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sosAlertIcon: {
+    fontSize: 40,
+    marginRight: 12,
+  },
+  sosAlertText: {
+    flex: 1,
+  },
+  sosAlertTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#E53935',
+  },
+  sosAlertTime: {
+    fontSize: 12,
+    color: '#D32F2F',
+    marginTop: 4,
+  },
+  trackingIndicator: {
+    marginLeft: 'auto',
+  },
+  ambulanceStatus: {
+    backgroundColor: '#F5F5F5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 6,
+  },
+  statusLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  statusValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#E53935',
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#EBEBEB',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 3,
+  },
+  notificationBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  notificationBadge: {
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 10,
+    marginBottom: 8,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2E7D32',
+    marginLeft: 6,
+  },
+  notificationMessage: {
+    fontSize: 13,
+    color: '#555',
+    fontStyle: 'italic',
+  },
+  mapContainer: {
+    flex: 1,
+    padding: 0,
+    paddingBottom: 80,
+  },
+  mockMapViewer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    elevation: 3,
+    minHeight: 400,
+  },
+  mapHeader: {
+    backgroundColor: '#E53935',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mapTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  mapContent: {
+    position: 'relative',
+    width: '100%',
+    height: 280,
+    backgroundColor: '#E8F5E9',
+    overflow: 'hidden',
+  },
+  mapGrid: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  mapGridRow: {
+    flex: 1,
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#C8E6C9',
+  },
+  mapGridCell: {
+    flex: 1,
+    borderRightWidth: 1,
+    borderRightColor: '#C8E6C9',
+  },
+  victimMarker: {
+    position: 'absolute',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    left: '50%',
+    top: '50%',
+    marginLeft: -25,
+    marginTop: -25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(229, 57, 53, 0.2)',
+    borderWidth: 2,
+    borderColor: '#E53935',
+  },
+  victimInner: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#E53935',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  victimIcon: {
+    fontSize: 16,
+  },
+  ambulanceMarker: {
+    position: 'absolute',
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+    borderWidth: 2,
+    borderColor: '#F44336',
+  },
+  ambulanceInner: {
+    width: 35,
+    height: 35,
+    borderRadius: 17.5,
+    backgroundColor: '#F44336',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ambulanceIcon: {
+    fontSize: 18,
+  },
+  nurseMarker: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(233, 30, 99, 0.1)',
+    borderWidth: 2,
+    borderColor: '#E91E63',
+  },
+  nurseInner: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#E91E63',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nurseIcon: {
+    fontSize: 16,
+  },
+  mapLegend: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FAFAFA',
+    borderTopWidth: 1,
+    borderTopColor: '#EBEBEB',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  legendItem: {
+    alignItems: 'center',
+  },
+  legendIcon: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  realtimeInfo: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#EBEBEB',
+  },
+  realtimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  realtimeValue: {
+    marginLeft: 8,
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '500',
   },
   header: {
     backgroundColor: '#E53935',

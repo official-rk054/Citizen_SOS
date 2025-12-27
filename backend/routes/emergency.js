@@ -124,6 +124,87 @@ router.get('/:emergencyId', async (req, res) => {
   }
 });
 
+// Notify nearby nurses (SOS)
+router.post('/:emergencyId/notify-nurses', authMiddleware, async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+    const emergency = await Emergency.findById(req.params.emergencyId);
+
+    if (!emergency) {
+      return res.status(404).json({ error: 'Emergency not found' });
+    }
+
+    // Find nearby nurses within 5km radius
+    const nearbyNurses = await User.find({
+      userType: 'nurse',
+      isAvailable: true,
+      latitude: { $exists: true },
+      longitude: { $exists: true }
+    });
+
+    const notifiedNurses = [];
+    
+    nearbyNurses.forEach(nurse => {
+      const distance = calculateDistance(latitude, longitude, nurse.latitude, nurse.longitude);
+      if (distance <= 5) { // 5km radius
+        notifiedNurses.push({
+          _id: nurse._id,
+          name: nurse.name,
+          phone: nurse.phone,
+          distance: distance.toFixed(2),
+          latitude: nurse.latitude,
+          longitude: nurse.longitude
+        });
+      }
+    });
+
+    // Update emergency with notified nurses
+    emergency.alertedVolunteerIds = [...new Set([...emergency.alertedVolunteerIds, ...notifiedNurses.map(n => n._id)])];
+    await emergency.save();
+
+    res.json({
+      message: `Notified ${notifiedNurses.length} nearby nurse(s)`,
+      notifiedNurses,
+      totalNotified: notifiedNurses.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get ambulance tracking updates
+router.get('/:emergencyId/tracking', async (req, res) => {
+  try {
+    const emergency = await Emergency.findById(req.params.emergencyId)
+      .populate('assignedAmbulanceId', 'name operatorName phone latitude longitude');
+
+    if (!emergency) {
+      return res.status(404).json({ error: 'Emergency not found' });
+    }
+
+    if (!emergency.assignedAmbulanceId) {
+      return res.json({ tracking: null, message: 'No ambulance assigned' });
+    }
+
+    const ambulance = emergency.assignedAmbulanceId;
+    const distance = calculateDistance(
+      emergency.latitude,
+      emergency.longitude,
+      ambulance.latitude || 0,
+      ambulance.longitude || 0
+    );
+
+    res.json({
+      ambulance,
+      distance: distance.toFixed(2),
+      eta: Math.max(Math.ceil(distance / 40 * 60), 1), // Assuming 40 km/h average speed
+      speed: Math.random() * 80 + 20 // Mock speed
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Helper functions
 async function findNearestAmbulance(latitude, longitude) {
   const ambulances = await User.find({

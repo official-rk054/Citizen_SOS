@@ -1,29 +1,61 @@
 /**
  * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Healthcare-inspired color theme with modern gradients
  */
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
+// Healthcare Color Palette
+const primaryBlue = '#0066CC';      // Medical blue
+const secondaryGreen = '#00A86B';   // Healing green
+const accentOrange = '#FF6B35';     // Energy orange
+const accentPink = '#FF1654';       // Alert pink
+const neutralGray = '#F5F6F7';      // Clean background
+const darkGray = '#2C3E50';         // Dark text
+
+const tintColorLight = primaryBlue;
 const tintColorDark = '#fff';
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
+    text: darkGray,
+    background: '#FFFFFF',
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: '#6B7280',
+    tabIconDefault: '#9CA3AF',
     tabIconSelected: tintColorLight,
+    // Healthcare specific
+    primary: primaryBlue,
+    secondary: secondaryGreen,
+    accent: accentOrange,
+    danger: accentPink,
+    success: secondaryGreen,
+    cardBackground: neutralGray,
+    cardBorder: '#E5E7EB',
+    gradientStart: primaryBlue,
+    gradientEnd: '#0052A3',
+    secondaryGradientStart: secondaryGreen,
+    secondaryGradientEnd: '#007D4F',
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
+    text: '#F3F4F6',
+    background: '#0F172A',
     tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
+    icon: '#9CA3AF',
+    tabIconDefault: '#6B7280',
     tabIconSelected: tintColorDark,
+    // Healthcare specific
+    primary: '#3B82F6',
+    secondary: '#10B981',
+    accent: '#F97316',
+    danger: '#EF4444',
+    success: '#10B981',
+    cardBackground: '#1E293B',
+    cardBorder: '#334155',
+    gradientStart: '#3B82F6',
+    gradientEnd: '#1E40AF',
+    secondaryGradientStart: '#10B981',
+    secondaryGradientEnd: '#047857',
   },
 };
 

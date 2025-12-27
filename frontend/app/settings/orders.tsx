@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,87 +8,46 @@ import {
   SafeAreaView,
   FlatList,
   Modal,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-
-const orders = [
-  {
-    id: '1',
-    type: 'Appointment',
-    provider: 'Dr. Smith',
-    date: 'Dec 22, 2025',
-    time: '4:14 PM',
-    amount: '₹500',
-    status: 'Confirmed',
-    statusColor: '#4CAF50',
-    icon: '📅',
-    details: {
-      service: 'General Checkup',
-      location: '123 Main Street',
-      notes: 'Please bring your insurance card',
-    },
-  },
-  {
-    id: '2',
-    type: 'Ambulance',
-    provider: 'Ambulance #101',
-    date: 'Dec 20, 2025',
-    time: '2:30 PM',
-    amount: '₹2,000',
-    status: 'Completed',
-    statusColor: '#4CAF50',
-    icon: '🚑',
-    details: {
-      service: 'Emergency Transport',
-      location: 'Current Location to Hospital',
-      notes: 'Emergency response',
-    },
-  },
-  {
-    id: '3',
-    type: 'Appointment',
-    provider: 'Nurse Mary',
-    date: 'Dec 18, 2025',
-    time: '10:00 AM',
-    amount: '₹800',
-    status: 'Completed',
-    statusColor: '#4CAF50',
-    icon: '👩‍⚕️',
-    details: {
-      service: 'Home Care',
-      location: 'Your Home',
-      notes: 'Wound dressing and vitals check',
-    },
-  },
-  {
-    id: '4',
-    type: 'Appointment',
-    provider: 'Dr. Sarah Jones',
-    date: 'Dec 15, 2025',
-    time: '3:45 PM',
-    amount: '₹1,200',
-    status: 'Cancelled',
-    statusColor: '#FF6B6B',
-    icon: '👩‍⚕️',
-    details: {
-      service: 'Cardiology Consultation',
-      location: 'Clinic Address',
-      notes: 'Cancelled by user',
-    },
-  },
-];
-
+import { usersAPI } from '../../utils/api';
+import { useAuth } from '../../context/AuthContext';
 export default function OrderHistoryScreen() {
+  const { user } = useAuth();
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<(typeof orders)[0] | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [detailsModal, setDetailsModal] = useState(false);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const statuses = ['Confirmed', 'Completed', 'Cancelled', 'Pending'];
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchOrders();
+    }
+  }, [user?.id]);
+
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      const response = await usersAPI.getOrderHistory(user!.id);
+      const ordersData = Array.isArray(response.data) ? response.data : [];
+      setOrders(ordersData);
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+      Alert.alert('Error', 'Failed to load orders');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredOrders = filterStatus
     ? orders.filter((order) => order.status === filterStatus)
     : orders;
 
-  const renderOrder = ({ item }: { item: (typeof orders)[0] }) => (
+  const renderOrder = ({ item }: any) => (
     <TouchableOpacity
       style={styles.orderCard}
       onPress={() => {
@@ -105,10 +64,10 @@ export default function OrderHistoryScreen() {
         <View
           style={[
             styles.statusBadge,
-            { backgroundColor: item.statusColor + '20' },
+            { backgroundColor: getStatusColor(item.status) + '20' },
           ]}
         >
-          <Text style={[styles.statusText, { color: item.statusColor }]}>
+          <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
             {item.status}
           </Text>
         </View>
@@ -117,20 +76,47 @@ export default function OrderHistoryScreen() {
       <View style={styles.orderMeta}>
         <View style={styles.metaItem}>
           <Text style={styles.metaIcon}>📅</Text>
-          <Text style={styles.metaText}>{item.date}</Text>
+          <Text style={styles.metaText}>
+            {new Date(item.date).toLocaleDateString()}
+          </Text>
         </View>
         <View style={styles.metaItem}>
-          <Text style={styles.metaIcon}>🕐</Text>
-          <Text style={styles.metaText}>{item.time}</Text>
+          <Text style={styles.metaIcon}>💰</Text>
+          <Text style={styles.metaText}>₹{item.amount}</Text>
         </View>
       </View>
 
       <View style={styles.orderFooter}>
-        <Text style={styles.amount}>{item.amount}</Text>
+        <Text style={styles.amount}>₹{item.amount}</Text>
         <Text style={styles.viewDetails}>View Details →</Text>
       </View>
     </TouchableOpacity>
   );
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Confirmed':
+        return '#4CAF50';
+      case 'Completed':
+        return '#2196F3';
+      case 'Cancelled':
+        return '#FF6B6B';
+      case 'Pending':
+        return '#FFC107';
+      default:
+        return '#999';
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#5B5FFF" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -140,19 +126,29 @@ export default function OrderHistoryScreen() {
         <Text style={styles.subtitle}>Track all your services and appointments</Text>
       </View>
 
-      {/* Filter Tabs */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-      >
-        <TouchableOpacity
-          style={[
-            styles.filterTab,
-            filterStatus === null && styles.filterTabActive,
-          ]}
-          onPress={() => setFilterStatus(null)}
-        >
+      {filteredOrders.length === 0 && (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, color: '#999', marginBottom: 10 }}>
+            No orders found
+          </Text>
+        </View>
+      )}
+
+      {filteredOrders.length > 0 && (
+        <>
+          {/* Filter Tabs */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll}
+          >
+            <TouchableOpacity
+              style={[
+                styles.filterTab,
+                filterStatus === null && styles.filterTabActive,
+              ]}
+              onPress={() => setFilterStatus(null)}
+            >
           <Text
             style={[
               styles.filterTabText,
@@ -325,6 +321,8 @@ export default function OrderHistoryScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+        </>
+      )}
     </SafeAreaView>
   );
 }
