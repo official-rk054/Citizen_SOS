@@ -66,7 +66,7 @@ export default function HomeScreen() {
       icon: 'account-heart',
       color: 'rgba(16,185,129,0.12)',
       accent: colors.secondary,
-      target: '/appointments/book',
+      target: '/appointments/nurse/book',
     },
     {
       id: 'ambulance',
