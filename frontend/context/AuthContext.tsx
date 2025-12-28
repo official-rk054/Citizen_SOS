@@ -1,0 +1,152 @@
+import React, { createContext, useContext, useState, useCallback } from 'react';
+import { authAPI, usersAPI, locationAPI } from '../utils/api';
+import { storageService } from '../utils/storage';
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  userType: 'user' | 'doctor' | 'nurse' | 'ambulance' | 'volunteer';
+  latitude?: number;
+  longitude?: number;
+  isAvailable?: boolean;
+  emergencyContacts?: any[];
+  specialization?: string;
+}
+
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  isLoggedIn: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (userData: any) => Promise<void>;
+  logout: () => Promise<void>;
+  updateLocation: (latitude: number, longitude: number) => Promise<void>;
+  updateUser: (userData: Partial<User>) => void;
+  setUser: (user: User | null) => void;
+  setIsLoggedIn: (value: boolean) => void;
+  setLoading: (value: boolean) => void;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  const login = useCallback(async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const response = await authAPI.login(email, password);
+      const { token, user: userData } = response.data;
+
+      await storageService.setAuthToken(token);
+      await storageService.setUserData(userData);
+
+      setUser(userData);
+      setIsLoggedIn(true);
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const register = useCallback(async (userData: any) => {
+    setLoading(true);
+    try {
+      const response = await authAPI.register(userData);
+      const { token, user: newUser } = response.data;
+
+      await storageService.setAuthToken(token);
+      await storageService.setUserData(newUser);
+
+      setUser(newUser);
+      setIsLoggedIn(true);
+    } catch (error) {
+      console.error('Register error:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    setLoading(true);
+    try {
+      await storageService.clearAuthData();
+      setUser(null);
+      setIsLoggedIn(false);
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const updateLocation = useCallback(
+    async (latitude: number, longitude: number) => {
+      if (user) {
+        try {
+          // Update current lat/lon on user profile
+          await usersAPI.updateLocation(user.id, latitude, longitude);
+          // Also record location in history for live tracking
+          try {
+            await locationAPI.updateLocation(latitude, longitude, '', 0);
+          } catch (e) {
+            // non-blocking: ignore history write failure
+          }
+          setUser((prev) =>
+            prev ? { ...prev, latitude, longitude } : null
+          );
+        } catch (error) {
+          console.error('Update location error:', error);
+        }
+      }
+    },
+    [user]
+  );
+
+  const updateUser = useCallback((userData: Partial<User>) => {
+    setUser((prev) => (prev ? { ...prev, ...userData } : null));
+  }, []);
+
+  const setUserValue = useCallback((user: User | null) => {
+    setUser(user);
+  }, []);
+
+  const setIsLoggedInValue = useCallback((value: boolean) => {
+    setIsLoggedIn(value);
+  }, []);
+
+  const setLoadingValue = useCallback((value: boolean) => {
+    setLoading(value);
+  }, []);
+
+  const value: AuthContextType = {
+    user,
+    loading,
+    isLoggedIn,
+    login,
+    register,
+    logout,
+    updateLocation,
+    updateUser,
+    setUser: setUserValue,
+    setIsLoggedIn: setIsLoggedInValue,
+    setLoading: setLoadingValue,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

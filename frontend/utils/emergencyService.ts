@@ -1,0 +1,290 @@
+import * as Location from 'expo-location';
+import { emergencyAPI, usersAPI } from './api';
+
+
+// SMS import - optional, will be available after expo-sms is installed
+let SMS: any = null;
+try {
+  SMS = require('expo-sms');
+} catch (e) {
+  console.warn('expo-sms not installed. SMS functionality will be disabled.');
+}
+
+// Calculate distance between two coordinates using Haversine formula
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+export interface EmergencyResponder {
+  _id: string;
+  id?: string;
+  name: string;
+  phone: string;
+  userType: 'doctor' | 'nurse' | 'ambulance' | 'volunteer';
+  latitude: number;
+  longitude: number;
+  distance?: number;
+  isAvailable?: boolean;
+  specialization?: string;
+  vehicleNumber?: string;
+  profilePicture?: string;
+}
+
+export interface EmergencyData {
+  victimId: string;
+  victimName: string;
+  victimPhone: string;
+  emergencyContactPhone?: string;
+  latitude: number;
+  longitude: number;
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  emergencyId?: string;
+  timestamp: Date;
+}
+
+export interface SOSResponse {
+  success: boolean;
+  emergency: any;
+  nearestAmbulance?: EmergencyResponder;
+  nearestNurse?: EmergencyResponder;
+  volunteers?: EmergencyResponder[];
+  message: string;
+}
+
+/**
+ * Trigger SOS emergency - Share location and notify responders
+ */
+export const triggerSOS = async (
+  userLocation: { latitude: number; longitude: number },
+  userData: any,
+  emergencyContactId?: string
+): Promise<SOSResponse> => {
+  try {
+    // Step 1: Create emergency record
+    const emergencyResponse = await emergencyAPI.triggerEmergency({
+      latitude: userLocation.latitude,
+      longitude: userLocation.longitude,
+      description: 'SOS Emergency - Immediate assistance needed',
+      emergencyContactId,
+      severity: 'critical',
+    });
+
+    const emergency = emergencyResponse.data.emergency;
+    const emergencyId = emergency._id;
+
+    // Step 2: Find nearest responders in parallel
+    const [nearbyAmbulances, nearbyNurses, nearbyVolunteers] = await Promise.all([
+      usersAPI.getNearbyAmbulances(userLocation.latitude, userLocation.longitude, 5),
+      usersAPI.getNearbyProfessionals('nurse', userLocation.latitude, userLocation.longitude, 5),
+      usersAPI.getNearbyVolunteers(userLocation.latitude, userLocation.longitude, 5).catch(() => ({ data: [] })),
+    ]);
+
+    // Step 3: Calculate distances and sort
+    const ambResponse = (nearbyAmbulances.data || []) as EmergencyResponder[];
+    const nurseResponse = (nearbyNurses.data || []) as EmergencyResponder[];
+    const volResponse = (nearbyVolunteers.data || []) as EmergencyResponder[];
+
+    // Enrich with distances
+    const enrichResponders = (responders: EmergencyResponder[]) => {
+      return responders.map((r) => ({
+        ...r,
+        distance: calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          r.latitude,
+          r.longitude
+        ),
+      }));
+    };
+
+    const enrichedAmbulances = enrichResponders(ambResponse).sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    const enrichedNurses = enrichResponders(nurseResponse).sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    const enrichedVolunteers = enrichResponders(volResponse).sort((a, b) => (a.distance || 0) - (b.distance || 0));
+
+    // Step 4: Share live location via SMS to emergency contact
+    if (userData.emergencyContacts && userData.emergencyContacts.length > 0) {
+      const emergencyContact = userData.emergencyContacts[0];
+      await sendLocationViaSMS(
+        emergencyContact.phone,
+        userLocation.latitude,
+        userLocation.longitude,
+        userData.name,
+        emergencyId
+      );
+    }
+
+    return {
+      success: true,
+      emergency,
+      nearestAmbulance: enrichedAmbulances[0],
+      nearestNurse: enrichedNurses[0],
+      volunteers: enrichedVolunteers.slice(0, 5),
+      message: 'SOS triggered successfully',
+    };
+  } catch (error) {
+    console.error('Error triggering SOS:', error);
+    throw {
+      success: false,
+      message: 'Failed to trigger SOS emergency',
+      error,
+    };
+  }
+};
+
+/**
+ * Send live location via SMS to emergency contact
+ */
+export const sendLocationViaSMS = async (
+  phoneNumber: string,
+  latitude: number,
+  longitude: number,
+  userName: string,
+  emergencyId?: string
+): Promise<boolean> => {
+  try {
+    if (!SMS) {
+      console.warn('SMS module not available');
+      return false;
+    }
+
+    const isAvailable = await SMS.isAvailableAsync();
+    if (!isAvailable) {
+      console.warn('SMS not available on this device');
+      return false;
+    }
+
+    const googleMapsLink = `https://maps.google.com/?q=${latitude},${longitude}`;
+    const message = `🚨 EMERGENCY ALERT 🚨\n\n${userName} needs immediate help!\n\nLive Location: ${googleMapsLink}\n\nLatitude: ${latitude.toFixed(6)}\nLongitude: ${longitude.toFixed(6)}\n\nEmergency ID: ${emergencyId}\n\nPlease respond immediately!`;
+
+    await SMS.sendSMSAsync([phoneNumber], message);
+    return true;
+  } catch (error) {
+    console.error('Error sending SMS:', error);
+    return false;
+  }
+};
+
+/**
+ * Get nearby responders for the emergency
+ */
+export const getNearbyResponders = async (
+  latitude: number,
+  longitude: number,
+  radius: number = 5
+): Promise<{
+  ambulances: EmergencyResponder[];
+  nurses: EmergencyResponder[];
+  doctors: EmergencyResponder[];
+  volunteers: EmergencyResponder[];
+}> => {
+  try {
+    const [ambulances, nurses, doctors, volunteers] = await Promise.all([
+      usersAPI.getNearbyAmbulances(latitude, longitude, radius),
+      usersAPI.getNearbyProfessionals('nurse', latitude, longitude, radius),
+      usersAPI.getNearbyProfessionals('doctor', latitude, longitude, radius),
+      usersAPI.getNearbyVolunteers(latitude, longitude, radius).catch(() => ({ data: [] })),
+    ]);
+
+    const enrichResponders = (responders: any[]) => {
+      return (responders || [])
+        .map((r) => ({
+          ...r,
+          distance: calculateDistance(latitude, longitude, r.latitude, r.longitude),
+        }))
+        .sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    };
+
+    return {
+      ambulances: enrichResponders(ambulances.data),
+      nurses: enrichResponders(nurses.data),
+      doctors: enrichResponders(doctors.data),
+      volunteers: enrichResponders(volunteers.data),
+    };
+  } catch (error) {
+    console.error('Error getting nearby responders:', error);
+    return {
+      ambulances: [],
+      nurses: [],
+      doctors: [],
+      volunteers: [],
+    };
+  }
+};
+
+/**
+ * Update ambulance location for tracking
+ */
+export const updateResponderLocation = async (
+  responderId: string,
+  latitude: number,
+  longitude: number,
+  emergencyId: string
+): Promise<void> => {
+  try {
+    await usersAPI.updateLocation(responderId, latitude, longitude);
+  } catch (error) {
+    console.error('Error updating responder location:', error);
+  }
+};
+
+/**
+ * Simulate ambulance live tracking (for demo purposes)
+ */
+export const simulateLiveTracking = (
+  ambulanceLocation: { latitude: number; longitude: number },
+  victimLocation: { latitude: number; longitude: number },
+  duration: number = 60000 // 60 seconds
+): {
+  updateLocation: (callback: (location: any) => void) => void;
+  stop: () => void;
+} => {
+  let intervalId: any = null;
+  const startTime = Date.now();
+
+  return {
+    updateLocation: (callback: (location: any) => void) => {
+      intervalId = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        // Move ambulance towards victim location
+        const newLat = ambulanceLocation.latitude + (victimLocation.latitude - ambulanceLocation.latitude) * progress * 0.5;
+        const newLon = ambulanceLocation.longitude + (victimLocation.longitude - ambulanceLocation.longitude) * progress * 0.5;
+
+        callback({
+          latitude: newLat,
+          longitude: newLon,
+          timestamp: new Date(),
+          eta: Math.max(0, Math.round((duration - elapsed) / 1000)),
+        });
+
+        if (progress >= 1) {
+          clearInterval(intervalId!);
+        }
+      }, 1000);
+    },
+    stop: () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    },
+  };
+};
+
+/**
+ * Format distance for display
+ */
+export const formatDistance = (distance: number): string => {
+  if (distance < 1) {
+    return `${Math.round(distance * 1000)}m`;
+  }
+  return `${distance.toFixed(1)}km`;
+};
